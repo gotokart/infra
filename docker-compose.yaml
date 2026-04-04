@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+
+  mysql:
+    image: mysql:8.0
+    container_name: gotokart-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: GotoKart@2026
+      MYSQL_DATABASE: gotokartDB
+    volumes:
+      - mysql-data:/var/lib/mysql
+    networks:
+      - gotokart-net
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-pGotoKart@2026"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gotokart-backend
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/gotokartDB?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: GotoKart@2026
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      SPRING_JPA_DATABASE_PLATFORM: org.hibernate.dialect.MySQLDialect
+      SPRING_JPA_SHOW_SQL: "false"
+      SPRING_JACKSON_SERIALIZATION_FAIL_ON_EMPTY_BEANS: "false"
+      SPRING_JACKSON_DEFAULT_PROPERTY_INCLUSION: non_null
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - gotokart-net
+
+  nginx:
+    image: nginx:alpine
+    container_name: gotokart-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - backend
+    networks:
+      - gotokart-net
+
+networks:
+  gotokart-net:
+    driver: bridge
+
+volumes:
+  mysql-data:
+    driver: local
