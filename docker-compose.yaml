@@ -2,29 +2,6 @@ version: '3.8'
 
 services:
 
-  mysql:
-    image: mysql:8.0
-    container_name: gotokart-mysql
-    restart: unless-stopped
-    environment:
-      MYSQL_ROOT_PASSWORD: GotoKart@2026
-      MYSQL_DATABASE: gotokartDB
-    command: >
-      --innodb-buffer-pool-size=128M
-      --max-connections=50
-      --performance-schema=OFF
-      --skip-name-resolve
-    mem_limit: 350m
-    volumes:
-      - mysql-data:/var/lib/mysql
-    networks:
-      - gotokart-net
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-pGotoKart@2026"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   backend:
     build:
       context: .
@@ -34,19 +11,16 @@ services:
     ports:
       - "8080:8080"
     environment:
-      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/gotokartDB?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
-      SPRING_DATASOURCE_USERNAME: root
-      SPRING_DATASOURCE_PASSWORD: GotoKart@2026
+      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL}
+      SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME}
+      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
       SPRING_JPA_HIBERNATE_DDL_AUTO: update
       SPRING_JPA_DATABASE_PLATFORM: org.hibernate.dialect.MySQLDialect
       SPRING_JPA_SHOW_SQL: "false"
       SPRING_JACKSON_SERIALIZATION_FAIL_ON_EMPTY_BEANS: "false"
       SPRING_JACKSON_DEFAULT_PROPERTY_INCLUSION: non_null
-      JAVA_OPTS: "-Xms128m -Xmx300m -XX:+UseSerialGC -Dspring.jmx.enabled=false"
-    mem_limit: 380m
-    depends_on:
-      mysql:
-        condition: service_healthy
+      JAVA_OPTS: "-Xms128m -Xmx350m -XX:+UseSerialGC -Dspring.jmx.enabled=false"
+    mem_limit: 420m
     networks:
       - gotokart-net
 
@@ -67,7 +41,3 @@ services:
 networks:
   gotokart-net:
     driver: bridge
-
-volumes:
-  mysql-data:
-    driver: local
