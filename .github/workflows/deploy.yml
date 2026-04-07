@@ -3,6 +3,7 @@ name: Deploy to AWS EC2 via SSM
 on:
   push:
     branches: [ main ]
+  workflow_dispatch:   # allows manual trigger from GitHub Actions UI
 
 permissions:
   id-token: write   # required for OIDC auth with AWS
@@ -28,14 +29,14 @@ jobs:
             --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
             --document-name "AWS-RunShellScript" \
             --parameters 'commands=[
-              "cd /home/ubuntu/gotokart/backend && git pull origin main",
-              "cd /home/ubuntu/gotokart/frontend && git pull origin main",
-              "cd /home/ubuntu/gotokart/infra && git pull origin main",
-              "cp /home/ubuntu/gotokart/backend/pom.xml /home/ubuntu/gotokart/infra/",
-              "cp -r /home/ubuntu/gotokart/backend/src /home/ubuntu/gotokart/infra/src",
-              "cp -r /home/ubuntu/gotokart/frontend /home/ubuntu/gotokart/infra/frontend",
-              "cd /home/ubuntu/gotokart/infra && docker compose up -d --build",
-              "docker compose -f /home/ubuntu/gotokart/infra/docker-compose.yaml ps",
+              "cd /home/ec2-user/gotokart/backend && git pull origin main",
+              "cd /home/ec2-user/gotokart/frontend && git pull origin main",
+              "cd /home/ec2-user/gotokart/infra && git pull origin main",
+              "cp /home/ec2-user/gotokart/backend/pom.xml /home/ec2-user/gotokart/infra/",
+              "cp -r /home/ec2-user/gotokart/backend/src /home/ec2-user/gotokart/infra/src",
+              "cp -r /home/ec2-user/gotokart/frontend /home/ec2-user/gotokart/infra/frontend",
+              "cd /home/ec2-user/gotokart/infra && docker compose up -d --build",
+              "docker compose -f /home/ec2-user/gotokart/infra/docker-compose.yaml ps",
               "echo GoToKart deployed successfully"
             ]' \
             --comment "GoToKart deploy from GitHub Actions" \
