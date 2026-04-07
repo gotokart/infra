@@ -1,5 +1,3 @@
-version: '3.8'
-
 # Local development — includes MySQL container (no external DB needed)
 # Usage: docker compose -f docker-compose.local.yml up --build
 
