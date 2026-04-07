@@ -21,13 +21,28 @@ http://34.227.190.40/api/*    → Spring Boot backend (proxied by Nginx)
 ## Architecture
 
 ```
-Browser ──HTTP──▶ EC2 :80  (gotokart-nginx — nginx:alpine)
-                      │
-              /api/*  ──proxy_pass──▶  gotokart-backend :8080  (Spring Boot)
-              /        ──static files         │
-                                              └──JPA──▶  gotokart-mysql :3306  (MariaDB 10.11)
-
-All containers on Docker bridge network: gotokart-net
+┌─ Client ────────────────────────────────────────────────┐
+│  User (browser)          Dev (local machine)            │
+└──────────┬───────────────────────┬──────────────────────┘
+           │ HTTP :80              │ git push
+           │                       ▼
+           │         ┌─ GitHub · gotokart org ──────────────┐
+           │         │  frontend  backend  infra  docs       │
+           │         └──────┬─────────┬──────────────────────┘
+           │                │ push    │ push
+           │                ▼         ▼
+           │         ┌─ GitHub Actions CI/CD ────────────────┐
+           │         │  build & test  →  deploy job           │
+           │         └───────────────────┬───────────────────┘
+           │                             │ docker compose up --build
+           ▼                             ▼
+┌─ AWS EC2 · m7i-flex.large · 34.227.190.40 ─────────────┐
+│  ┌─ Docker containers ─────────────────────────────┐    │
+│  │  Nginx :80  ──/api/*──▶  Spring Boot :8080       │    │
+│  │      │                       │                   │    │
+│  │  static files            MariaDB :3306           │    │
+│  └─────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────┘
 ```
 
 ## Repositories
