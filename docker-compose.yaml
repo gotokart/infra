@@ -1,13 +1,12 @@
 services:
 
   mysql:
-    image: mysql:8.4
+    image: mariadb:10.11
     container_name: gotokart-mysql
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: Root@1234
-      MYSQL_DATABASE: gotokart
-      MYSQL_ROOT_HOST: "%"
+      MARIADB_ROOT_PASSWORD: Root@1234
+      MARIADB_DATABASE: gotokart
     ports:
       - "3306:3306"
     volumes:
@@ -16,11 +15,11 @@ services:
     networks:
       - gotokart-net
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-pRoot@1234"]
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 15s
       timeout: 10s
       retries: 10
-      start_period: 60s
+      start_period: 30s
 
   backend:
     build:
