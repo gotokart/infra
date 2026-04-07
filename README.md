@@ -5,24 +5,34 @@
 ```
 http://34.227.190.40          → GoToKart storefront (served by Nginx)
 http://34.227.190.40/api/*    → Spring Boot backend (proxied by Nginx)
-
-EC2 Instance  : Amazon Linux 2023  (ip-172-31-21-128)
-Instance type : t2.micro (or your chosen type)
-Region        : us-east-1
 ```
+
+### EC2 Instance Details
+
+| Field | Value |
+|-------|-------|
+| Instance name | `gotokart-server` |
+| Instance ID | `i-06d8c2e118aee4985` |
+| Instance type | `m7i-flex.large` (2 vCPUs) |
+| AMI | Amazon Linux 2023 — kernel 6.1 |
+| Availability Zone | `us-east-1c` |
+| Public IPv4 | `34.227.190.40` |
+| Public DNS | `ec2-34-227-190-40.compute-1.amazonaws.com` |
+| Private IP | `172.31.21.128` |
+| Key pair | `gotokart-server-key` |
+| Security group | `launch-wizard-6` |
+| Launch time | 2026-04-07 22:28 IST |
 
 ## Architecture
 
 ```
-Browser → http://34.227.190.40
-               │
-         Nginx :80  (Docker)
-          ├── /          → static frontend files
-          └── /api/*     → http://backend:8080  (Docker internal)
-               │
-         Spring Boot :8080  (Docker)
-               │
-         MariaDB 10.11 :3306  (Docker)
+Browser ──HTTP──▶ EC2 :80  (gotokart-nginx — nginx:alpine)
+                      │
+              /api/*  ──proxy_pass──▶  gotokart-backend :8080  (Spring Boot)
+              /        ──static files         │
+                                              └──JPA──▶  gotokart-mysql :3306  (MariaDB 10.11)
+
+All containers on Docker bridge network: gotokart-net
 ```
 
 ## Repositories
