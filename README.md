@@ -7,21 +7,16 @@ http://34.227.190.40          → GoToKart storefront (served by Nginx)
 http://34.227.190.40/api/*    → Spring Boot backend (proxied by Nginx)
 ```
 
-### EC2 Instance Details
+### EC2 Instance
 
 | Field | Value |
 |-------|-------|
-| Instance name | `gotokart-server` |
-| Instance ID | `i-06d8c2e118aee4985` |
-| Instance type | `m7i-flex.large` (2 vCPUs) |
-| AMI | Amazon Linux 2023 — kernel 6.1 |
-| Availability Zone | `us-east-1c` |
-| Public IPv4 | `34.227.190.40` |
-| Public DNS | `ec2-34-227-190-40.compute-1.amazonaws.com` |
-| Private IP | `172.31.21.128` |
+| Name | `gotokart-server` |
+| Type | `m7i-flex.large` (2 vCPUs) |
+| OS | Amazon Linux 2023 — kernel 6.1 |
+| Region / AZ | `us-east-1` / `us-east-1c` |
+| Public IP | `34.227.190.40` |
 | Key pair | `gotokart-server-key` |
-| Security group | `launch-wizard-6` |
-| Launch time | 2026-04-07 22:28 IST |
 
 ## Architecture
 
