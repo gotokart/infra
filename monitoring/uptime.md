@@ -1,9 +1,11 @@
 # Monitoring
 
-## URLs to Monitor
-- Frontend: https://gotokart.github.io/frontend
-- Backend: https://backend-production-e13e2.up.railway.app/api/products
+## URLs to monitor
 
-## Free Monitoring Tools
-- UptimeRobot: https://uptimerobot.com (free, checks every 5 min)
-- Better Uptime: https://betteruptime.com
+- **Storefront + API (EC2):** `http://34.227.190.40/` — `http://34.227.190.40/api/products`
+- **Documentation (GitHub Pages):** `https://gotokart.github.io/docs/`
+
+## Free monitoring tools
+
+- [UptimeRobot](https://uptimerobot.com) — free tier, checks every 5 minutes
+- [Better Stack Uptime](https://betteruptime.com)
