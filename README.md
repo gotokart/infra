@@ -14,7 +14,7 @@ http://34.229.50.171/api/*    → Spring Boot backend (proxied by Nginx)
 | Status | Active |
 | Name | `gotokart-ecommerce` |
 | Instance ID | `i-0dcb2819d4c3539f5` |
-| Type | `t3.small` (2 vCPU, 2 GiB RAM) |
+| Type | `t3.small` (2 vCPU, 2 GB RAM) |
 | OS | Amazon Linux 2023 — kernel 6.1 |
 | Region | `us-east-1` (N. Virginia) |
 | Public IP | `34.229.50.171` |
@@ -22,7 +22,7 @@ http://34.229.50.171/api/*    → Spring Boot backend (proxied by Nginx)
 | Schedule | 9 AM – 9 PM IST (Amazon EventBridge) |
 | Root volume | 20 GB EBS (~5.9 GB used) |
 
-### Docker (3 containers)
+### Docker (**3** containers running)
 
 | Role | Service | Port |
 |------|---------|------|
