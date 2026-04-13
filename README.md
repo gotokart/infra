@@ -14,24 +14,20 @@ http://34.229.50.171/api/*    → Spring Boot backend (proxied by Nginx)
 | Status | Active |
 | Name | `gotokart-ecommerce` |
 | Instance ID | `i-0dcb2819d4c3539f5` |
-| Type | `t3.small` (2 vCPU, 2 GB RAM) |
-| OS | Amazon Linux 2023 — kernel 6.1 |
+| Type | `t3.small` (2 vCPU, 2GB RAM) |
 | Region | `us-east-1` (N. Virginia) |
 | Public IP | `34.229.50.171` |
-| Access | AWS Systems Manager — Session Manager |
-| Schedule | 9 AM – 9 PM IST (Amazon EventBridge) |
-| Root volume | 20 GB EBS (~5.9 GB used) |
 
 ### Docker (**3** containers running)
 
 | Role | Service | Port |
 |------|---------|------|
-| Frontend | Nginx | 80 (public) |
-| Backend | Spring Boot | 8080 (internal) |
-| Database | MariaDB 10.11 | 3306 (internal) |
+| Frontend | Nginx | 80 |
+| Backend | Spring Boot | 8080 |
+| Database | MariaDB 10.11 | 3306 |
 
-**Compose network:** `infra_gotokart-net`  
-**DB volume:** `infra_mysql-data`
+**Network:** `infra_gotokart-net`  
+**DB storage:** `infra_mysql-data` (volume)
 
 ## Architecture
 
