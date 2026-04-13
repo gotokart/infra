@@ -2,7 +2,7 @@
 
 ## URLs to monitor
 
-- **Storefront + API (EC2):** `http://34.227.190.40/` — `http://34.227.190.40/api/products`
+- **Storefront + API (EC2):** `http://34.229.50.171/` — `http://34.229.50.171/api/products`
 - **Documentation (GitHub Pages):** `https://gotokart.github.io/docs/`
 
 ## Free monitoring tools

@@ -1,6 +1,6 @@
 # GitHub Pages (documentation)
 
-The Nextra documentation site is published from the `docs` repository to GitHub Pages. This is separate from the live storefront, which runs on **AWS EC2** (`http://34.227.190.40`).
+The Nextra documentation site is published from the `docs` repository to GitHub Pages. This is separate from the live storefront, which runs on **AWS EC2** (`http://34.229.50.171`).
 
 ## Current URL
 

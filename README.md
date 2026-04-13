@@ -3,20 +3,35 @@
 ## Live Deployment
 
 ```
-http://34.227.190.40          → GoToKart storefront (served by Nginx)
-http://34.227.190.40/api/*    → Spring Boot backend (proxied by Nginx)
+http://34.229.50.171          → GoToKart storefront (served by Nginx)
+http://34.229.50.171/api/*    → Spring Boot backend (proxied by Nginx)
 ```
 
-### EC2 Instance
+### EC2 instance
 
 | Field | Value |
 |-------|-------|
-| Name | `gotokart-server` |
-| Type | `m7i-flex.large` (2 vCPUs) |
+| Status | Active |
+| Name | `gotokart-ecommerce` |
+| Instance ID | `i-0dcb2819d4c3539f5` |
+| Type | `t3.small` (2 vCPU, 2 GiB RAM) |
 | OS | Amazon Linux 2023 — kernel 6.1 |
-| Region / AZ | `us-east-1` / `us-east-1c` |
-| Public IP | `34.227.190.40` |
-| Key pair | `gotokart-server-key` |
+| Region | `us-east-1` (N. Virginia) |
+| Public IP | `34.229.50.171` |
+| Access | AWS Systems Manager — Session Manager |
+| Schedule | 9 AM – 9 PM IST (Amazon EventBridge) |
+| Root volume | 20 GB EBS (~5.9 GB used) |
+
+### Docker (3 containers)
+
+| Role | Service | Port |
+|------|---------|------|
+| Frontend | Nginx | 80 (public) |
+| Backend | Spring Boot | 8080 (internal) |
+| Database | MariaDB 10.11 | 3306 (internal) |
+
+**Compose network:** `infra_gotokart-net`  
+**DB volume:** `infra_mysql-data`
 
 ## Architecture
 
@@ -36,8 +51,8 @@ http://34.227.190.40/api/*    → Spring Boot backend (proxied by Nginx)
            │         └───────────────────┬───────────────────┘
            │                             │ docker compose up --build
            ▼                             ▼
-┌─ AWS EC2 · m7i-flex.large · 34.227.190.40 ─────────────┐
-│  ┌─ Docker containers ─────────────────────────────┐    │
+┌─ AWS EC2 · t3.small · 34.229.50.171 ────────────────────┐
+│  ┌─ Docker containers (infra_gotokart-net) ──────────┐    │
 │  │  Nginx :80  ──/api/*──▶  Spring Boot :8080       │    │
 │  │      │                       │                   │    │
 │  │  static files            MariaDB :3306           │    │
@@ -130,6 +145,8 @@ cd /home/ec2-user/gotokart && \
 | `docker-compose.local.yml` | Local dev compose — same stack on your laptop |
 | `nginx.conf` | Nginx: serves frontend static files + proxies `/api/` to backend |
 | `.github/workflows/deploy.yml` | GitHub Actions — auto-deploy via SSM on push to main |
+
+Secrets for the workflow: `AWS_IAM_ROLE_ARN`, `AWS_REGION`, `EC2_INSTANCE_ID`. Set `EC2_INSTANCE_ID` to the live instance (`i-0dcb2819d4c3539f5` for `gotokart-ecommerce`).
 
 ---
 
