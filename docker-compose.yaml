@@ -40,6 +40,12 @@ services:
       SPRING_JACKSON_DEFAULT_PROPERTY_INCLUSION: non_null
       JWT_SECRET: GoToKartSuperSecretJwtKey2026!!VeryLongAndSecure@#$%
       JWT_EXPIRY_MS: "86400000"
+      AWS_REGION: us-east-1
+      AWS_S3_BUCKET: gotokart-product-images-035379289330-us-east-1-an
+      # Leave AWS_S3_PUBLIC_BASE_URL empty to use the virtual-hosted S3 URL.
+      # Set to your CloudFront domain (e.g. https://cdn.gotokart.com) once configured.
+      AWS_S3_PUBLIC_BASE_URL: ""
+      AWS_S3_PRESIGN_TTL_SECONDS: "300"
       JAVA_OPTS: "-Xms128m -Xmx350m -XX:+UseSerialGC -Dspring.jmx.enabled=false"
     mem_limit: 420m
     depends_on:
