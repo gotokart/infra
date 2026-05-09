@@ -21,9 +21,11 @@ services:
       retries: 10
       start_period: 30s
 
+  # Build from the Spring Boot repo — infra/ has no pom.xml; context "." produced an
+  # outdated jar missing newer routes (e.g. POST .../image-upload-url → HTTP 404).
   backend:
     build:
-      context: .
+      context: ../backend
       dockerfile: Dockerfile
     container_name: gotokart-backend
     restart: unless-stopped
