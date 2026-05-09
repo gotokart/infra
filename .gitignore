@@ -8,3 +8,6 @@ pom.xml
 certs/*.key
 certs/*.crt
 certs/*.pem
+
+# certbot HTTP-01 challenge webroot — populated at renewal time, transient
+certbot-webroot/
