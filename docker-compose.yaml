@@ -62,9 +62,13 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"
+      - "443:443"
     volumes:
       - ./frontend:/usr/share/nginx/html:ro
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      # certs/ is git-ignored — generate on the host before first start.
+      # See infra/certs/README.md for the openssl command.
+      - ./certs:/etc/nginx/certs:ro
     depends_on:
       - backend
     networks:

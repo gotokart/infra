@@ -3,3 +3,8 @@
 src/
 frontend/
 pom.xml
+
+# TLS material — never commit private keys or certs
+certs/*.key
+certs/*.crt
+certs/*.pem
