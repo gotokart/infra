@@ -332,3 +332,80 @@ Opens `http://localhost` with the full stack (Nginx + Backend + a dockerized MyS
 | Admin password | `admin123` |
 
 > Admin user is auto-created by `DataInitializer` on every backend startup if not found.
+
+---
+
+## Admin Dashboard
+
+Log in as `admin@gotokart.com` to see an **Admin** link in the top nav. The
+dashboard ships with eight tabs:
+
+| Tab | What it does |
+|-----|--------------|
+| Overview | KPI cards (revenue, orders, users, products), low-stock list, recent-orders feed |
+| Products | Searchable table; add / edit / delete; in-place stock + price changes; CSV export |
+| Orders | All orders across all customers; inline status dropdown (`PLACED → SHIPPED → DELIVERED / CANCELLED`); details modal; CSV export |
+| Users | Role select (USER ↔ ADMIN); soft deactivate / reactivate; CSV export. The currently logged-in admin can't change their own role or deactivate themselves. |
+| Categories | Add, rename, delete categories; deletion soft-orphans the linked products. |
+| Coupons | Create discount codes (1–100%), set expiry + usage limit, toggle active. Storefront integration is wired in `/api/coupons/validate?code=…` for the cart flow to call when ready. |
+| Reviews | Moderate user-submitted reviews (PENDING → APPROVED / REJECTED). |
+| Revenue | Chart.js bar + line charts (daily / weekly / monthly). |
+
+### New backend endpoints
+
+All gated by `@PreAuthorize("hasRole('ADMIN')")` unless noted.
+
+```
+GET    /api/admin/stats                          Dashboard overview KPIs
+GET    /api/admin/revenue?period=daily|weekly|monthly   Time-bucketed revenue
+PATCH  /api/admin/users/{id}/role                Promote / demote (ADMIN ↔ USER)
+PATCH  /api/admin/users/{id}/active              Deactivate / reactivate
+
+GET    /api/orders                               Admin-only: list every order
+PATCH  /api/orders/{id}/status                   Move through PLACED/SHIPPED/DELIVERED/CANCELLED
+
+PUT    /api/categories/{id}                      Rename category
+DELETE /api/categories/{id}                      Delete category
+
+GET    /api/coupons                              List coupons
+POST   /api/coupons                              Create
+PUT    /api/coupons/{id}                         Update (code is immutable)
+DELETE /api/coupons/{id}                         Delete
+GET    /api/coupons/validate?code=ABC123         Public — used by the cart
+
+GET    /api/reviews                              All reviews (filter ?status=)
+GET    /api/reviews/product/{productId}          Public — approved reviews for a product
+POST   /api/reviews                              Public — submit a new review (PENDING)
+PATCH  /api/reviews/{id}/status                  Approve / Reject
+DELETE /api/reviews/{id}                         Delete
+```
+
+### Schema changes auto-applied on first boot
+
+Hibernate `ddl-auto=update` adds three tables / one column on next backend
+restart — no manual migration required:
+
+- `users` → adds column `active BIT(1) NOT NULL DEFAULT 1` (existing rows backfill to active).
+- new table `coupons` (code, discount_percent, valid_until, usage_limit, used_count, active, created_at).
+- new table `reviews` (user_id, product_id, rating, comment, status, created_at).
+
+### Security tightening shipped alongside the dashboard
+
+- `GET /api/users` and `GET /api/users/{id}` are now `hasRole('ADMIN')` only (previously open — emails leaked).
+- `User.password` is now `@JsonProperty(WRITE_ONLY)` so it never leaves the backend in a JSON response.
+- `POST /api/categories` is now admin-only (previously open).
+- `PUT /api/products/{id}` is now admin-only (matches the existing `POST`/`DELETE`).
+
+### Deploy
+
+The dashboard is just an addition to the existing `frontend/` and `backend/`
+images, so the normal redeploy applies — no infra changes:
+
+```bash
+ssh ec2-user@34.229.50.171
+cd /home/ec2-user/gotokart
+git pull
+cd infra
+docker compose up -d --build backend
+docker compose restart nginx        # picks up the new index.html / script.js / style.css
+```
