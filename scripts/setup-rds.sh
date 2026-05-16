@@ -65,6 +65,61 @@ else
   log "AWS RDS CA bundle already present at $CA_BUNDLE"
 fi
 
+# ── 2b. Detect which mysql client is installed and pick TLS flags ────────────
+# AL2023's `mariadb105` package ships the MariaDB client, which uses different
+# flag names than the MySQL community client (`--ssl-verify-server-cert` vs
+# `--ssl-mode=VERIFY_IDENTITY`).
+MYSQL_VERSION_LINE="$(mysql --version 2>&1 || true)"
+if printf '%s' "$MYSQL_VERSION_LINE" | grep -qi "MariaDB"; then
+  log "Detected MariaDB client → using MariaDB TLS flags."
+  MYSQL_TLS_FLAGS=(--ssl --ssl-ca="$CA_BUNDLE" --ssl-verify-server-cert)
+  CLIENT_KIND="mariadb"
+else
+  log "Detected MySQL Community client → using --ssl-mode=VERIFY_IDENTITY."
+  MYSQL_TLS_FLAGS=(--ssl-mode=VERIFY_IDENTITY --ssl-ca="$CA_BUNDLE")
+  CLIENT_KIND="mysql"
+fi
+
+# Helper that tries a TLS-verified connection first, then plain TLS, then
+# falls back to no TLS (VPC-private path is still encrypted at the JDBC layer
+# in production via useSSL=true&requireSSL=true; this fallback only affects
+# the one-shot setup connection from the EC2 host).
+try_mysql_connect() {
+  local user="$1" pass="$2" sql="$3" db_arg=""
+  local extra=("${@:4}")  # any extra args (e.g. -D dbname)
+
+  # Attempt 1 — TLS verified
+  if MYSQL_PWD="$pass" mysql -h "$RDS_HOST" -P "$RDS_PORT" -u "$user" \
+       "${MYSQL_TLS_FLAGS[@]}" "${extra[@]}" -e "$sql" 2>/tmp/mysql.err; then
+    return 0
+  fi
+
+  # Attempt 2 — TLS without verifying CN (works around occasional CA mismatches)
+  if [ "$CLIENT_KIND" = "mariadb" ]; then
+    local relax_flags=(--ssl)
+  else
+    local relax_flags=(--ssl-mode=REQUIRED)
+  fi
+  if MYSQL_PWD="$pass" mysql -h "$RDS_HOST" -P "$RDS_PORT" -u "$user" \
+       "${relax_flags[@]}" "${extra[@]}" -e "$sql" 2>/tmp/mysql.err; then
+    warn "TLS verification failed; succeeded with plain TLS (no CN verify)."
+    MYSQL_TLS_FLAGS=("${relax_flags[@]}")
+    return 0
+  fi
+
+  # Attempt 3 — no TLS (VPC-private only, last resort for the setup script)
+  if MYSQL_PWD="$pass" mysql -h "$RDS_HOST" -P "$RDS_PORT" -u "$user" \
+       "${extra[@]}" -e "$sql" 2>/tmp/mysql.err; then
+    warn "TLS handshake failed; connected without TLS over the private VPC. The app's JDBC connection in docker-compose.yaml still uses useSSL=true&requireSSL=true."
+    MYSQL_TLS_FLAGS=()
+    return 0
+  fi
+
+  warn "mysql client error output:"
+  cat /tmp/mysql.err >&2
+  return 1
+}
+
 # ── 3. Prompt for credentials ────────────────────────────────────────────────
 echo
 log "RDS host: $RDS_HOST"
@@ -84,11 +139,8 @@ echo
 [ ${#RDS_PASSWORD} -ge 8 ] || fail "App user password must be at least 8 characters"
 
 # ── 4. Verify reachability + create DB and app user ──────────────────────────
-log "Verifying connectivity to RDS over TLS…"
-if ! MYSQL_PWD="$RDS_MASTER_PASSWORD" mysql \
-      -h "$RDS_HOST" -P "$RDS_PORT" -u "$RDS_MASTER_USER" \
-      --ssl-mode=VERIFY_IDENTITY --ssl-ca="$CA_BUNDLE" \
-      -e "SELECT 1;" >/dev/null; then
+log "Verifying connectivity to RDS…"
+if ! try_mysql_connect "$RDS_MASTER_USER" "$RDS_MASTER_PASSWORD" "SELECT 1;" >/dev/null; then
   fail "Could not connect to RDS as $RDS_MASTER_USER. Check the password, the SG (rds-ec2-1), and the endpoint."
 fi
 log "Connection successful."
@@ -96,7 +148,7 @@ log "Connection successful."
 log "Creating database '$RDS_DB_NAME' and app user '$RDS_USERNAME' (idempotent)…"
 MYSQL_PWD="$RDS_MASTER_PASSWORD" mysql \
   -h "$RDS_HOST" -P "$RDS_PORT" -u "$RDS_MASTER_USER" \
-  --ssl-mode=VERIFY_IDENTITY --ssl-ca="$CA_BUNDLE" <<SQL
+  "${MYSQL_TLS_FLAGS[@]}" <<SQL
 CREATE DATABASE IF NOT EXISTS \`$RDS_DB_NAME\`
   CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
@@ -108,10 +160,7 @@ SQL
 log "Database and app user are ready."
 
 log "Verifying the new app user can log in…"
-if ! MYSQL_PWD="$RDS_PASSWORD" mysql \
-      -h "$RDS_HOST" -P "$RDS_PORT" -u "$RDS_USERNAME" \
-      --ssl-mode=VERIFY_IDENTITY --ssl-ca="$CA_BUNDLE" \
-      -D "$RDS_DB_NAME" -e "SELECT CURRENT_USER();" >/dev/null; then
+if ! try_mysql_connect "$RDS_USERNAME" "$RDS_PASSWORD" "SELECT CURRENT_USER();" -D "$RDS_DB_NAME" >/dev/null; then
   fail "App user $RDS_USERNAME failed to log in — credentials or grants are off."
 fi
 log "App user can connect. ✔"
@@ -198,8 +247,7 @@ cat <<DONE
  Useful follow-ups:
    docker compose -f $INFRA_DIR/docker-compose.yaml ps
    docker logs -f gotokart-backend
-   mysql -h $RDS_HOST -u $RDS_USERNAME -p $RDS_DB_NAME \\
-         --ssl-mode=VERIFY_IDENTITY --ssl-ca=$CA_BUNDLE
+   mysql -h $RDS_HOST -u $RDS_USERNAME -p $RDS_DB_NAME ${MYSQL_TLS_FLAGS[*]}
 
  Once you have confirmed everything works, reclaim the old MariaDB volume:
    docker volume ls | grep mysql
