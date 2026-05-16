@@ -399,13 +399,26 @@ restart — no manual migration required:
 ### Deploy
 
 The dashboard is just an addition to the existing `frontend/` and `backend/`
-images, so the normal redeploy applies — no infra changes:
+images, so the normal redeploy applies — no infra changes. On EC2 each repo
+is cloned separately under `~`:
 
 ```bash
 ssh ec2-user@34.229.50.171
-cd /home/ec2-user/gotokart
-git pull
-cd infra
-docker compose up -d --build backend
-docker compose restart nginx        # picks up the new index.html / script.js / style.css
+
+# 1. Pull the three repos
+cd ~/backend  && git pull
+cd ~/frontend && git pull
+cd ~/infra    && git pull
+
+# 2. Rebuild the backend image with the new code, recreate the container.
+#    --no-deps so we don't touch nginx; -d so we don't tail the log.
+cd ~/infra
+docker compose up -d --no-deps --build backend
+
+# 3. Restart nginx so it picks up the new frontend bind-mount.
+docker compose restart nginx
+
+# 4. Verify
+docker compose ps
+curl -s http://localhost/api/products | head -c 120
 ```
