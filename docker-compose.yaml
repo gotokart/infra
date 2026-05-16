@@ -1,26 +1,5 @@
 services:
 
-  mysql:
-    image: mariadb:10.11
-    container_name: gotokart-mysql
-    restart: unless-stopped
-    environment:
-      MARIADB_ROOT_PASSWORD: Root@1234
-      MARIADB_DATABASE: gotokart
-    ports:
-      - "3306:3306"
-    volumes:
-      - mysql-data:/var/lib/mysql
-    mem_limit: 350m
-    networks:
-      - gotokart-net
-    healthcheck:
-      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
-      interval: 15s
-      timeout: 10s
-      retries: 10
-      start_period: 30s
-
   # Build from the Spring Boot repo — infra/ has no pom.xml; context "." produced an
   # outdated jar missing newer routes (e.g. POST .../image-upload-url → HTTP 404).
   backend:
@@ -32,27 +11,26 @@ services:
     ports:
       - "8080:8080"
     environment:
-      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/gotokart?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&authenticationPlugin=caching_sha2_password
-      SPRING_DATASOURCE_USERNAME: root
-      SPRING_DATASOURCE_PASSWORD: Root@1234
+      # Database — points at AWS RDS. Values come from infra/.env on the EC2 host.
+      # Example endpoint: gotokart-db.cluster-xxxxx.us-east-1.rds.amazonaws.com
+      SPRING_DATASOURCE_URL: jdbc:mysql://${RDS_HOST}:${RDS_PORT:-3306}/${RDS_DB_NAME}?useSSL=true&requireSSL=true&serverTimezone=UTC&authenticationPlugin=caching_sha2_password
+      SPRING_DATASOURCE_USERNAME: ${RDS_USERNAME}
+      SPRING_DATASOURCE_PASSWORD: ${RDS_PASSWORD}
       SPRING_JPA_HIBERNATE_DDL_AUTO: update
-      SPRING_JPA_DATABASE_PLATFORM: org.hibernate.dialect.MariaDBDialect
+      SPRING_JPA_DATABASE_PLATFORM: org.hibernate.dialect.MySQLDialect
       SPRING_JPA_SHOW_SQL: "false"
       SPRING_JACKSON_SERIALIZATION_FAIL_ON_EMPTY_BEANS: "false"
       SPRING_JACKSON_DEFAULT_PROPERTY_INCLUSION: non_null
-      JWT_SECRET: GoToKartSuperSecretJwtKey2026!!VeryLongAndSecure@#$%
-      JWT_EXPIRY_MS: "86400000"
-      AWS_REGION: us-east-1
-      AWS_S3_BUCKET: gotokart-product-images-035379289330-us-east-1-an
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRY_MS: ${JWT_EXPIRY_MS:-86400000}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_S3_BUCKET: ${AWS_S3_BUCKET:-gotokart-product-images-035379289330-us-east-1-an}
       # Leave AWS_S3_PUBLIC_BASE_URL empty to use the virtual-hosted S3 URL.
       # Set to your CloudFront domain (e.g. https://cdn.gotokart.com) once configured.
-      AWS_S3_PUBLIC_BASE_URL: ""
-      AWS_S3_PRESIGN_TTL_SECONDS: "300"
+      AWS_S3_PUBLIC_BASE_URL: ${AWS_S3_PUBLIC_BASE_URL:-}
+      AWS_S3_PRESIGN_TTL_SECONDS: ${AWS_S3_PRESIGN_TTL_SECONDS:-300}
       JAVA_OPTS: "-Xms128m -Xmx350m -XX:+UseSerialGC -Dspring.jmx.enabled=false"
     mem_limit: 420m
-    depends_on:
-      mysql:
-        condition: service_healthy
     networks:
       - gotokart-net
 
@@ -80,7 +58,3 @@ services:
 networks:
   gotokart-net:
     driver: bridge
-
-volumes:
-  mysql-data:
-    driver: local

@@ -18,16 +18,25 @@ http://34.229.50.171/api/*    → Spring Boot backend (proxied by Nginx)
 | Region | `us-east-1` (N. Virginia) |
 | Public IP | `34.229.50.171` |
 
-### Docker (**3** containers running)
+### Docker (**2** containers running)
 
 | Role | Service | Port |
 |------|---------|------|
 | Frontend | Nginx | 80 |
 | Backend | Spring Boot | 8080 |
-| Database | MariaDB 10.11 | 3306 |
 
-**Network:** `infra_gotokart-net`  
-**DB storage:** `infra_mysql-data` (volume)
+**Network:** `infra_gotokart-net`
+
+### Database (AWS managed, outside Docker)
+
+| Field | Value |
+|-------|-------|
+| Service | **Amazon RDS for MySQL 8.0** |
+| Endpoint | `gotokart-db.xxxxxxxx.us-east-1.rds.amazonaws.com` |
+| Port | `3306` |
+| DB name | `gotokart` |
+| Auth | Username/password (stored in `infra/.env` — see below) |
+| Network | Private to the VPC; security group allows port 3306 only from the EC2 SG |
 
 ## Architecture
 
@@ -51,8 +60,12 @@ http://34.229.50.171/api/*    → Spring Boot backend (proxied by Nginx)
 │  ┌─ Docker containers (infra_gotokart-net) ──────────┐    │
 │  │  Nginx :80  ──/api/*──▶  Spring Boot :8080       │    │
 │  │      │                       │                   │    │
-│  │  static files            MariaDB :3306           │    │
-│  └─────────────────────────────────────────────────┘    │
+│  │  static files                │ JDBC :3306        │    │
+│  └──────────────────────────────┼──────────────────┘    │
+│                                  ▼                       │
+│                         ┌─ AWS RDS (MySQL 8) ──────┐     │
+│                         │  gotokart-db (private)   │     │
+│                         └──────────────────────────┘     │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -67,13 +80,110 @@ http://34.229.50.171/api/*    → Spring Boot backend (proxied by Nginx)
 
 ---
 
+## AWS RDS — one-time setup
+
+This stack expects a MySQL 8.0 RDS instance to exist before the backend container starts.
+
+### 1. Create the RDS instance (Console)
+
+1. **RDS → Create database** → **Standard create**.
+2. **Engine:** MySQL 8.0 (latest minor).
+3. **Templates:** *Production* (or *Dev/Test* for non-prod).
+4. **Settings:**
+   - DB instance identifier: `gotokart-db`
+   - Master username: `admin` (you'll create a less-privileged app user below)
+   - Master password: store in a password manager
+5. **Instance class:** `db.t4g.micro` is fine for low traffic.
+6. **Storage:** 20 GB gp3, **autoscaling on**.
+7. **Connectivity:**
+   - VPC: same VPC as the EC2 instance
+   - Public access: **No**
+   - VPC security group: create new `gotokart-rds-sg` (rules added in step 2)
+   - AZ: same AZ as EC2 (lower latency, lower cross-AZ cost)
+8. **Database authentication:** Password authentication.
+9. **Additional configuration:**
+   - Initial database name: `gotokart`
+   - Backups: 7-day retention
+   - Encryption: **enabled** (KMS default key is fine)
+10. Click **Create database** — provisioning takes ~5 minutes.
+
+### 2. Lock down the security group
+
+On `gotokart-rds-sg`, **inbound** rules:
+
+| Type | Port | Source |
+|------|------|--------|
+| MySQL/Aurora | 3306 | `sg-xxxxxxxx` (the EC2 security group) |
+
+No public IPs, no `0.0.0.0/0`. Outbound can stay default.
+
+### 3. Run the bootstrap script on EC2 (recommended)
+
+SSH onto EC2, then:
+
+```bash
+cd /home/ec2-user/gotokart/infra
+git pull origin main      # picks up the new compose file + setup script
+./scripts/setup-rds.sh
+```
+
+The script is idempotent. It:
+
+- Installs the `mysql` CLI (via `mariadb105`) if missing.
+- Downloads the AWS RDS CA bundle and connects with `--ssl-mode=VERIFY_IDENTITY`.
+- Prompts for the master password and a new app-user password.
+- Creates the `gotokart` database and the `gotokart_app` user (least-privilege; never reuses the master `admin` user).
+- Writes `infra/.env` with mode `0600`.
+- Brings down the old stack (including the MariaDB container) and runs `docker compose up -d --build`.
+- Tails the backend logs until it sees `Started GotokartApplication`.
+
+### Manual alternative — if you'd rather do each step by hand
+
+```bash
+mysql -h gotokart-db.ccjocguqok5t.us-east-1.rds.amazonaws.com -u admin -p
+```
+
+```sql
+CREATE DATABASE gotokart CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'gotokart_app'@'%' IDENTIFIED BY 'a-strong-password';
+GRANT ALL PRIVILEGES ON gotokart.* TO 'gotokart_app'@'%';
+FLUSH PRIVILEGES;
+EXIT;
+```
+
+```bash
+cd /home/ec2-user/gotokart/infra
+cp .env.example .env
+nano .env       # fill in RDS_HOST, RDS_USERNAME, RDS_PASSWORD, JWT_SECRET
+docker compose down && docker compose up -d --build
+```
+
+`.env` is git-ignored (`.gitignore` already excludes `.env` and `*.env`). Docker Compose loads it automatically — no `--env-file` flag needed.
+
+### 5. (Optional) migrate existing data from the old MariaDB container
+
+If you're switching from the previous in-container MariaDB and want to keep existing rows:
+
+```bash
+# On EC2, before tearing down the old stack
+docker exec gotokart-mysql mariadb-dump -uroot -pRoot@1234 gotokart > gotokart-dump.sql
+
+# Push the dump into RDS
+mysql -h gotokart-db.xxxxxxxx.us-east-1.rds.amazonaws.com -u gotokart_app -p gotokart \
+  < gotokart-dump.sql
+```
+
+Otherwise, JPA's `ddl-auto=update` will create all tables on first boot and `DataInitializer` will reseed the 102 products + admin user.
+
+---
+
 ## EC2 — One-time Server Setup
 
 Run these once after creating a fresh Amazon Linux 2023 EC2 instance:
 
 ```bash
 # 1. Install Docker
-sudo yum install -y docker git
+sudo yum install -y docker git mariadb105   # `mariadb105` gives us the `mysql` CLI for RDS access
 sudo systemctl start docker
 sudo systemctl enable docker
 sudo usermod -aG docker ec2-user
@@ -92,7 +202,7 @@ exit
 ```
 
 ```bash
-# 4. Add swap space (prevents OOM on t2.micro)
+# 4. Add swap space (prevents OOM on small instances)
 sudo fallocate -l 2G /swapfile
 sudo chmod 600 /swapfile
 sudo mkswap /swapfile
@@ -110,9 +220,9 @@ cp backend/pom.xml infra/
 cp -r backend/src infra/src
 cp -r frontend/. infra/frontend/
 
-# 7. Build and start
+# 7. Configure DB and bring stack up — one-shot script
 cd infra
-docker compose up -d --build
+./scripts/setup-rds.sh
 ```
 
 ---
@@ -137,8 +247,8 @@ cd /home/ec2-user/gotokart && \
 | File | Purpose |
 |------|---------|
 | `Dockerfile` | Multi-stage build — Maven (JDK 21) compile → JRE 21 runtime |
-| `docker-compose.yaml` | Production compose — MariaDB + Backend + Nginx |
-| `docker-compose.local.yml` | Local dev compose — same stack on your laptop |
+| `docker-compose.yaml` | Production compose — Backend + Nginx (DB is RDS, external) |
+| `docker-compose.local.yml` | Local dev compose — same stack + dockerized MySQL on your laptop |
 | `nginx.conf` | Nginx: serves frontend static files + proxies `/api/` to backend |
 | `.github/workflows/deploy.yml` | GitHub Actions — auto-deploy via SSM on push to main |
 
@@ -150,11 +260,10 @@ Secrets for the workflow: `AWS_IAM_ROLE_ARN`, `AWS_REGION`, `EC2_INSTANCE_ID`. S
 
 | Container | Image | Port | Notes |
 |-----------|-------|------|-------|
-| `gotokart-mysql` | `mariadb:10.11` | 3306 (internal) | MySQL-compatible, no ioctl bug on AL2023 |
-| `gotokart-backend` | `infra-backend` (built) | 8080 (internal) | Spring Boot, 350m mem limit |
+| `gotokart-backend` | `infra-backend` (built) | 8080 (internal) | Spring Boot, 350m mem limit, connects to RDS over JDBC |
 | `gotokart-nginx` | `nginx:alpine` | 80 → public | Serves frontend + API proxy |
 
-> **Why MariaDB instead of MySQL?** The official `mysql:8.x` Docker image crashes on Amazon Linux 2023's kernel with `Inappropriate ioctl for device`. MariaDB 10.11 is fully MySQL-compatible and works perfectly.
+> **No DB container in production.** The MySQL database now lives in AWS RDS (managed). Local development still uses a throwaway MySQL container — see `docker-compose.local.yml`.
 
 ---
 
@@ -170,23 +279,21 @@ Secrets for the workflow: `AWS_IAM_ROLE_ARN`, `AWS_REGION`, `EC2_INSTANCE_ID`. S
 ## Useful Commands on EC2
 
 ```bash
-# Check all containers are running
+# Check containers are running
 docker compose ps
 
 # Watch backend logs live
 docker logs -f gotokart-backend
 
-# Watch MariaDB logs
-docker logs -f gotokart-mysql
-
 # Restart a single service
 docker compose restart nginx
 
-# Full restart
+# Full restart (no data loss — data is in RDS, not in volumes)
 docker compose down && docker compose up -d
 
-# Wipe DB and restart fresh (re-seeds 102 products + admin)
-docker compose down -v && docker compose up -d --build
+# Connect to RDS from the EC2 box
+source infra/.env
+mysql -h "$RDS_HOST" -u "$RDS_USERNAME" -p"$RDS_PASSWORD" "$RDS_DB_NAME"
 ```
 
 ---
@@ -197,6 +304,9 @@ docker compose down -v && docker compose up -d --build
 |------|------|--------|
 | SSH | 22 | Your IP |
 | HTTP | 80 | 0.0.0.0/0 |
+| HTTPS | 443 | 0.0.0.0/0 |
+
+The EC2 SG must also be referenced by `gotokart-rds-sg` as the source for port 3306 (set in step 2 of the RDS setup above).
 
 ---
 
@@ -207,7 +317,7 @@ cd infra
 docker compose -f docker-compose.local.yml up --build
 ```
 
-Opens `http://localhost` with the full stack (Nginx + Backend + MariaDB).
+Opens `http://localhost` with the full stack (Nginx + Backend + a dockerized MySQL — RDS is **not** required for local dev).
 
 ---
 
@@ -216,7 +326,8 @@ Opens `http://localhost` with the full stack (Nginx + Backend + MariaDB).
 | Service | Value |
 |---------|-------|
 | DB name | `gotokart` |
-| DB password (root) | `Root@1234` |
+| DB user (production, RDS) | `gotokart_app` (set in `infra/.env`) |
+| DB password (local docker) | `Gotokart#2026Ec2` |
 | Admin email | `admin@gotokart.com` |
 | Admin password | `admin123` |
 
