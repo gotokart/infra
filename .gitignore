@@ -3,6 +3,7 @@
 .local/
 src/
 frontend/
+docs-site/
 pom.xml
 
 # TLS material — never commit private keys or certs
